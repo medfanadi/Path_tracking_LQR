@@ -1,0 +1,13 @@
+<launch>
+  <arg name="simulation_time" default="15"/>
+
+  
+  <node	name="extrData_Node" pkg="sim_nav" type="extrData_Node">
+	<param name="simulation_time"  value ="$(arg simulation_time)" />  
+  </node>
+
+  <node name="spido_tracking_line_node" pkg="spido_riding" type="spido_tracking_line_node">
+	<param name="simulation_time"  value ="$(arg simulation_time)" />  
+</node>
+  
+</launch>

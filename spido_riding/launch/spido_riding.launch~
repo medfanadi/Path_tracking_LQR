@@ -1,0 +1,21 @@
+<launch>
+  
+  <arg name="linear_speed" default="2"/>
+  <arg name="steering_angle_front" default="0"/>
+  <arg name="steering_angle_rear" default="0"/>
+  <arg name="simulation_time" default="15"/>
+
+  <!--node	name="spido_record_node" pkg="spido_riding" type="spido_record_node">
+	<param name="simulation_time"  value ="$(arg simulation_time)" />  
+  </node-->
+  <node	name="extrData_Node" pkg="sim_nav" type="extrData_Node">
+	<param name="simulation_time"  value ="$(arg simulation_time)" />  
+  </node>
+  <node	name="spido_riding_node" pkg="spido_riding" type="spido_riding_node" >
+	<param name="linear_speed"  value ="$(arg linear_speed)" />
+	<param name="steering_angle_front"  value ="$(arg steering_angle_front)" />
+	<param name="steering_angle_rear"  value ="$(arg steering_angle_rear)" />
+	<param name="simulation_time"  value ="$(arg simulation_time)" />
+
+  </node>
+</launch>

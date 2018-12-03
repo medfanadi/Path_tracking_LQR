@@ -1,0 +1,7 @@
+<launch>
+  
+  <node	name="spido_record_node" pkg="spido_riding" type="spido_record_node"/>
+  <node name="spido_interpolate_node" pkg="spido_riding" type="spido_interpolate_node"/>
+
+  
+</launch>

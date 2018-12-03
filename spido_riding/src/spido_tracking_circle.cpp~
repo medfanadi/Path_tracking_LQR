@@ -1,0 +1,214 @@
+	#include "ros/ros.h"
+	#include "geometry_msgs/Twist.h"
+	#include <sstream>
+	#include "nav_msgs/Odometry.h"
+	//#include "sensor_msgs/Imu.h"
+	#include <iostream>
+	#include <fstream>
+	#include <string.h>
+	#include "spido_pure_interface/cmd_drive.h"
+	#include "geometry_msgs/Pose2D.h"
+#include <sensor_msgs/NavSatFix.h>
+using namespace std;
+double longitude , latitude;
+double kkk= 0.017453293;
+double Rt=6371000;
+//double latitude_init=48.80551814; //sur le terrain réel
+//double longitude_init=2.07650929;
+double latitude_init=39.5080322117; //sur gazebo
+double longitude_init=-0.46198057533;
+const double INF = 1.e100;
+
+		vector<pair<double, double> > matxref;
+		vector<pair<double, double> > matyref;
+		vector<pair<double, double> > matpsiref;
+		vector<pair<double, double> > matxpref;
+		vector<pair<double, double> > matypref;
+		vector<pair<double, double> > matpsipref;	
+		vector<pair<double, double> > matrhoref;	
+double masse=880 , a=0.85 ,  b=0.85,  d=0.5 ,   Cf=15000  ,  vit  ,   Cr=15000   ,  moment=86.5 , k=0.05 ;	
+
+	double interpolate(double xx,vector<pair<double, double> > mat)
+	{
+    // Assumes that "mat" is sorted by .first
+    // Check if x is out of bound
+	if (xx > mat.back().first) return INF;
+    	if (xx < mat[0].first) return -INF;
+	vector<pair<double, double> >::iterator it, it2;
+    // INFINITY is defined in math.h in the glibc implementation
+	it = lower_bound(mat.begin(), mat.end(), make_pair(xx, -INF));
+    // Corner case
+	if (it == mat.begin()) return it->second;
+	it2 = it;
+	--it2;
+	return it2->second + (it->second - it2->second)*(xx - it2->first)/(it->first - it2->first);
+
+	}
+
+
+
+//**************Ce noeud est un "publisher" et un "subscriber"*********************
+	// Déclaration du noeud
+	ros::Publisher cmd_drive_publisher;
+	ros::Subscriber IMU_subscriber;
+	ros::Subscriber sub_;
+	//ros::Publisher pose_publisher;
+//***************************************
+	// programme principal
+		double tref,xref,yref,psiref,xpref,ypref,psipref;
+	double X ,Y,Qx, Qy, Qz, Qw, Xp, Yp, Psip;//données de l'odométrie. X,Y,XP,Yp sont exprimés dans le repère absolu. LesQ(x,y,z,w) sont 		les quaternions.
+	void ImuCallback(const nav_msgs::Odometry::ConstPtr & odom_message);	
+void retour_gps (const sensor_msgs::NavSatFix::ConstPtr& msg);
+	int main(int argc, char **argv)
+	{
+		
+		ros::init(argc, argv, "spido_LQR_droite_gnrl");//initiation du noeud.
+		ros::NodeHandle noeud;
+		ros::Time last_ros_time_;
+	  	bool wait = true;
+		double simul_time;
+
+
+		const std ::string PARAM_NAME_st = "~simulation_time" ;
+		//déclaration des paramètres d"entrées
+
+		ros::param::get(PARAM_NAME_st,  simul_time) ;
+
+		ifstream fichier("/home/bachir/spido_ws/src/spido_riding/pose.txt", ios::in);  //  ouvre en lecture
+		if(fichier)  // si l'ouverture a fonctionné
+        	{
+		double tref,xref,yref,psiref,xpref,ypref,psipref,rhoref;
+		//int:dim=0;
+		//vector<double>  rho,dy,ddy;		
+		while(fichier >> tref>>xref>>yref>>psiref>>xpref>>ypref>>psipref>>rhoref)
+		{	matxref.push_back(make_pair(tref, xref));
+			matyref.push_back(make_pair(tref, yref));
+			matpsiref.push_back(make_pair(tref, psiref));
+			matxpref.push_back(make_pair(tref, xpref));
+			matypref.push_back(make_pair(tref, ypref));
+			matpsipref.push_back(make_pair(tref, psipref));
+			//matrhoref.push_back(make_pair(tref, rhoref));
+			
+		
+		}
+		fichier.close();
+		sort(matxref.begin(), matxref.end());
+		sort(matyref.begin(), matyref.end());
+		sort(matpsiref.begin(), matpsiref.end());
+		sort(matxpref.begin(), matxpref.end());
+		sort(matypref.begin(), matypref.end());
+		sort(matpsipref.begin(), matpsipref.end());
+		//sort(matrhoref.begin(), matrhoref.end());
+		}
+		else
+		cout<<"impossible d'ouvrir le fichier";	
+		while (wait)
+  		{
+    			last_ros_time_ = ros::Time::now();
+			if (last_ros_time_.toSec() > 0)
+				wait = false;
+		}
+		IMU_subscriber = noeud.subscribe("/IMU", 200, ImuCallback);
+		sub_=noeud.subscribe("/GPS/fix",1,retour_gps);
+		cmd_drive_publisher=noeud.advertise<spido_pure_interface::cmd_drive>("/cmd_drive",1000);
+		//pose_publisher=noeud.advertise<geometry_msgs::Pose2D>("/Pose",1000);
+		ros::Rate loop_rate(200);
+		spido_pure_interface::cmd_drive   input;
+		//geometry_msgs::Pose2D   pose_msg;
+
+	       
+		//attribuer les valeurs des paramètres au message
+		//			input.linear_speed=2;
+		//input.steering_angle_front=0;	
+		//input.steering_angle_rear =0;
+		//cmd_drive_publisher.publish(input);//envoyer (publier) le message input dans le topic cmd_drive
+		//vit=input.linear_speed;	
+		double t,vy,Psi,ey,epsi,vyref,xxpref,yypref,alphap,rho;
+	  	double  t0= ros::Time::now().toSec();
+		double alpha,psipref,cpx,cpy;
+		//double xb,yb;//coordonnée d'un point par lequel passe la droite;
+		//xb=3;yb=2;
+		do {
+		//fichier >> tref>>xref>>yref>>psiref>>xpref>>ypref>>psipref;
+
+			t=ros::Time::now().toSec()-t0;
+			Psi=atan2(2.0 * (Qw * Qz + Qx * Qy),1.0 - 2.0 * (Qy * Qy + Qz * Qz));//transformation des quaternion vers l'angle de lacet.
+//if(Psi<0) Psi=Psi+6.283185307;
+			vy=-Xp*sin(Psi)+Yp*cos(Psi)+0.0059; // vy:vitesse latérale expriméé dans le repère véhicule
+			Psip=Psip;			
+			/*xxpref=interpolate(t,matxpref);
+			yypref=interpolate(t,matypref);
+			alphap=interpolate(t,matpsipref)-0.1000;
+			alpha=interpolate(t,matpsiref);
+			vyref=-xxpref*sin(alpha)+yypref*cos(alpha); // vy:vitesse latérale expriméé dans le repère véhicule
+			//vyref=-xpref*sin(psiref)+ypref*cos(psiref); // vy:vitesse latérale expriméé dans le repère véhicule
+			//yyref=interpolate(t,matyref);
+			ey=((interpolate(t,matxref)-X)*sin(alpha)-(interpolate(t,matyref)-Y)*cos(alpha)) ;
+			//ey=((xref-X)*sin(psiref)-(yref-Y)*cos(psiref));*/
+			//ey=Y;
+			vyref=0;
+			cpx=(X-0)/sqrt((X-0)*(X-0)+(Y-20)*(Y-20));
+			cpy=(Y-20)/sqrt((X-0)*(X-0)+(Y-20)*(Y-20));
+                        xref=0+20*cpx;
+			yref=20+20*cpy;
+			psiref=atan2(cpx,-cpy);
+//if (psiref<0) psiref=psiref+6.283185307;
+			ey=((xref-X)*sin(psiref)-(yref-Y)*cos(psiref));
+			epsi=(Psi-psiref)-0.0029;if (epsi<-3.14) epsi=epsi+6.283185307;if (epsi>3.14) epsi=epsi-6.283185307;
+			vit=2;//sqrt(xxpref*xxpref+yypref*yypref);
+			input.linear_speed=vit;
+			psipref=alphap;
+			//k=interpolate(t,matrhoref);
+			/*pose_msg.x=X;
+			pose_msg.y=Y;
+			pose_msg.theta=Psi;
+			pose_publisher.publish(pose_msg);*///envoyer (publier) le message input dans le topic cmd_drive
+			/// cas d'une droite verticale (là le ey=-(xrobot-xdroite_référence)) 
+
+			input.steering_angle_front=-(9112*Cf*vyref*a*k*k - 44*Cf*alphap*b - 44*Cf*alphap*a + 9112*Cf*vyref*b*k*k + 10000*Cf*alphap*a*a*k*k + 5000*alphap*b*k*k*masse*vit*vit + 10000*Cf*alphap*a*b*k*k + 4*Cf*Psip*a*k*k*vit + 4*Cf*alphap*a*k*k*vit + Cf*vy*a*k*k*vit + Cf*vyref*a*k*k*vit + 4*Cf*Psip*b*k*k*vit + 4*Cf*alphap*b*k*k*vit + Cf*vy*b*k*k*vit + Cf*vyref*b*k*k*vit + 888*Cf*a*epsi*k*k*vit + 44*Cf*a*ey*k*k*vit + 888*Cf*b*epsi*k*k*vit + 44*Cf*b*ey*k*k*vit)/(10000*Cf*k*k*vit*(a + b))+0.0425 ;
+
+			input.steering_angle_rear=(10000*Cr*alphap*b*b*k*k - 41*Cr*alphap*b - 10815*Cr*vyref*a*k*k - 10815*Cr*vyref*b*k*k - 41*Cr*alphap*a - 5000*alphap*a*k*k*masse*vit*vit + 10000*Cr*alphap*a*b*k*k + 3*Cr*Psip*a*k*k*vit + 3*Cr*alphap*a*k*k*vit + Cr*vy*a*k*k*vit + Cr*vyref*a*k*k*vit + 3*Cr*Psip*b*k*k*vit + 3*Cr*alphap*b*k*k*vit + Cr*vy*b*k*k*vit + Cr*vyref*b*k*k*vit + 815*Cr*a*epsi*k*k*vit + 41*Cr*a*ey*k*k*vit + 815*Cr*b*epsi*k*k*vit + 41*Cr*b*ey*k*k*vit)/(10000*Cr*k*k*vit*(a + b))-0.0425;
+			cmd_drive_publisher.publish(input);
+			ros::spinOnce();
+			loop_rate.sleep();
+                        //cout<<t<<"	"<<X<<"	"<<input.linear_speed<<endl;
+			
+			
+	    	}while(t<simul_time);
+		//arrêter le robot après le temps de simulation.
+		input.linear_speed=0;
+		input.steering_angle_front=0;
+		input.steering_angle_rear=0;
+		cmd_drive_publisher.publish(input);
+		}
+//subroutine qui enregistre les donnnées de l'odom.
+void ImuCallback(const nav_msgs::Odometry::ConstPtr & odom_message){
+	//X=odom_message->pose.pose.position.x;
+	//Y=odom_message->pose.pose.position.y;
+	Qx=odom_message->pose.pose.orientation.x;
+	Qy=odom_message->pose.pose.orientation.y;
+	Qz=odom_message->pose.pose.orientation.z;
+	Qw=odom_message->pose.pose.orientation.w;
+	Xp=odom_message->twist.twist.linear.x;
+	Yp=odom_message->twist.twist.linear.y;
+   	Psip=odom_message->twist.twist.angular.z;
+
+	
+}	  
+
+ void transform (){
+	X=Rt*(longitude - longitude_init)*kkk*cos(kkk*latitude_init);
+	Y=Rt*(latitude - latitude_init)*kkk;
+		
+}
+
+
+void retour_gps (const sensor_msgs::NavSatFix::ConstPtr& msg){
+	ROS_INFO("reading ...");
+	longitude= msg->longitude;
+	latitude= msg->latitude;
+	transform();
+	//ROS_INFO("longitude= %f latitude= %f ",longitude, latitude);
+	//ROS_INFO("x= %f y= %f ",x, y);
+}
+

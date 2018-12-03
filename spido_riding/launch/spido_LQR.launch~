@@ -1,0 +1,17 @@
+<launch>
+  <arg name="simulation_time" default="15"/>
+
+
+  
+
+  <node name="spido_tracking_line_node" pkg="spido_riding" type="LQR.py" output="screen">
+	<param name="simulation_time"  value ="$(arg simulation_time)"/>
+
+ </node> 
+
+<node	name="record_Node" pkg="spido_riding" type="record.py" output="screen">
+	<param name="simulation_time"  value ="$(arg simulation_time)" />  
+   
+</node>
+  
+</launch>

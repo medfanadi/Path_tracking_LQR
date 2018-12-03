@@ -1,0 +1,15 @@
+<launch>
+  <arg name="linear_speed" default="2"/>
+  <arg name="steering_angle_front" default="7"/>
+  <arg name="steering_angle_rear" default="-7"/>
+  <arg name="simulation_time" default="10"/>
+
+  <node	name="spdio_riding_node" pkg="spdio_riding" type="spdio_riding_node" >
+	<param name="linear_speed"  value ="$(arg linear_speed)" />
+	<param name="steering_angle"  value ="$(arg steering_angle_front)" />
+	<param name="steering_angle"  value ="$(arg steering_angle_rear)" />
+	<param name="simulation_time"  value ="$(arg simulation_time)" />
+
+</node>
+  
+</launch>

@@ -1,0 +1,69 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+from math import *
+import numpy as np
+import matplotlib.pyplot as plt
+from cardraw import draw_car
+import shapely.geometry as geom
+from scipy import interpolate
+from scipy import signal
+from scipy import fftpack
+
+import shapely.geometry as geom
+from scipy import spatial
+from ButterFilter import butter_lowpass_filter
+
+######Trajectory plot   #################################################################
+kk=180/pi
+
+
+res=np.loadtxt('steerLQR_20.txt')
+
+
+
+plt.plot(res[:,10],res[:,11], 'r', linewidth=3.0)
+
+plt.plot(res[:,1],res[:,2], '+b', linewidth=3.0)
+plt.axis('equal')
+plt.xlabel('x(m)', fontsize=20)
+plt.ylabel('y(m)', fontsize=20)
+
+#########################################################################################
+
+lf=0.7
+lr=0.7
+tr=0.5
+rw=0.2
+dx=0.2
+dy=0.2
+
+temps1=res[:,0]
+temps2=res[:,0]
+zoom=4
+
+
+ix = interpolate.interp1d(res[:,0],res[:,1])
+iy = interpolate.interp1d(res[:,0],res[:,2])
+iyaw = interpolate.interp1d(res[:,0],res[:,3])
+ibf = interpolate.interp1d(res[:,0],res[:,8])
+ibr = interpolate.interp1d(res[:,0],res[:,9])
+n=6
+i=0
+while (i<n):
+	tempsp=temps1[int(i*(len(temps1)-1)/(n-1))]
+	tempss=temps2[int(i*(len(temps2)-1)/(n-1))]
+	x=np.array([ix(tempsp),iy(tempsp),iyaw(tempsp),ibf(tempss),ibr(tempss)])
+	draw_car(x,lf,lr,tr,dx,dy,rw,zoom)
+	i=i+1
+#########################################################################################
+
+plt.grid(True)
+plt.legend(["Reference path"])
+plt.show()
+
+
+#################################################################################
+
+
+
+
